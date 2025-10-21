@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Filtro MDF-e por CNPJ — 100% local</title>
+<!-- JSZip para gerar o .zip (somente esta dependência) -->
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" integrity="sha256-0mMe5wH6aTvm6YbO9E5vXMx0QUNJdQk1aQ9Q6pHjRMA=" crossorigin="anonymous"></script>
+<style>
+  :root {
+    --bg: #0b1020;
+    --card: #141a2a;
+    --muted: #8fa0b8;
+    --text: #e6ecf5;
+    --accent: #4da3ff;
+    --accent-2: #2ecc71;
+    --danger: #ff5c5c;
+    --warning: #ffc048;
+    --radius: 14px;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif;
+    background: radial-gradient(1200px 800px at 20% -10%, #112043 0%, #0b1020 40%, #05070d 100%);
+    color: var(--text); display: grid; place-items: start center;
+    padding: 32px;
+  }
+  .wrap { width: min(1100px, 95vw); }
+  .title { font-size: 28px; font-weight: 700; letter-spacing: .3px; margin: 0 0 8px; }
+  .subtitle { color: var(--muted); margin: 0 0 20px; }
+  .card {
+    background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01));
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: var(--radius);
+    padding: 18px 18px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+  }
+  .grid { display: grid; gap: 16px; grid-template-columns: 1.4fr 1fr; }
+  @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
+
+  .cnpj-row { display: grid; gap: 10px; grid-template-columns: 1fr 180px 180px; align-items: end; }
+  @media (max-width: 640px) { .cnpj-row { grid-template-columns: 1fr 1fr; } }
+
+  label { font-size: 13px; color: var(--muted); display: block; margin-bottom: 6px; }
+  input[type="text"], input[type="file"] {
+    width: 100%; padding: 12px 12px; border-radius: 10px; border: 1px solid rgba(255,255,255,.12);
+    background: rgba(255,255,255,.04); color: var(--text); outline: none;
+  }
+  input[type="text"]::placeholder { color: #9fb3d0; opacity: .8; }
+
+  .drop {
+    display: grid; place-items: center; text-align: center; padding: 26px; min-height: 170px;
+    border-radius: 12px; border: 1.5px dashed rgba(255,255,255,.18);
+    background: linear-gradient(180deg, rgba(77,163,255,.08), rgba(77,163,255,.02));
+    color: var(--muted);
+    transition: .15s ease-in-out;
+  }
+  .drop.dragover { border-color: var(--accent); color: var(--text); background: rgba(77,163,255,.12); }
+
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .btn {
+    border: 1px solid rgba(255,255,255,.12);
+    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+    color: var(--text); padding: 10px 14px; border-radius: 12px; cursor: pointer; font-weight: 600;
+    transition: .15s ease; user-select: none;
+  }
+  .btn:hover { transform: translateY(-1px); border-color: rgba(255,255,255,.18); }
+  .btn.accent { border-color: rgba(77,163,255,.45); background: linear-gradient(180deg, rgba(77,163,255,.25), rgba(77,163,255,.08)); }
+  .btn.good   { border-color: rgba(46,204,113,.35); background: linear-gradient(180deg, rgba(46,204,113,.24), rgba(46,204,113,.08)); }
+  .btn.warn   { border-color: rgba(255,192,72,.35); background: linear-gradient(180deg, rgba(255,192,72,.24), rgba(255,192,72,.08)); color: #1b1b1b; }
+
+  .muted { color: var(--muted); font-size: 13px; }
+  .kpi { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 14px; }
+  @media (max-width: 880px) { .kpi { grid-template-columns: repeat(2, 1fr);} }
+  .kpi .box {
+    background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02));
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 12px; padding: 12px 14px;
+  }
+  .kpi .val { font-size: 18px; font-weight: 700; }
+  .kpi .lab { color: var(--muted); font-size: 12px; margin-top: 2px; }
+
+  progress { width: 100%; height: 16px; border: none; border-radius: 10px; background: rgba(255,255,255,.08); overflow: hidden; }
+  progress::-webkit-progress-bar { background: rgba(255,255,255,.08); }
+  progress::-webkit-progress-value { background: linear-gradient(90deg, var(--accent), #7f67ff); }
+  progress::-moz-progress-bar { background: linear-gradient(90deg, var(--accent), #7f67ff); }
+
+  .log { max-height: 180px; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+         background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.08); padding: 10px; border-radius: 10px; }
+  .pill { padding: 6px 10px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); }
+  .ok { color: var(--accent-2); }
+  .bad { color: var(--danger); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="title">Filtro de MDF-e por CNPJ (100% local)</h1>
+    <p class="subtitle">Arraste e solte milhares de XMLs, informe um CNPJ e baixe um <b>.zip</b> apenas com os arquivos que contêm esse CNPJ. Nada vai para a internet — tudo roda no seu navegador.</p>
+
+    <div class="grid">
+      <!-- COLUNA ESQUERDA -->
+      <div class="card">
+        <div id="drop" class="drop">
+          <div>
+            <div style="font-size:18px; font-weight:700;">Solte seus XMLs aqui</div>
+            <div class="muted">ou clique para selecionar arquivos</div>
+          </div>
+          <input id="fileInput" type="file" accept=".xml,text/xml" multiple style="position:absolute; inset:0; opacity:0; cursor:pointer;">
+        </div>
+
+        <div style="height: 14px;"></div>
+
+        <div class="cnpj-row">
+          <div>
+            <label for="cnpj">CNPJ alvo</label>
+            <input id="cnpj" type="text" placeholder="Ex.: 12.345.678/0001-90 ou 12345678000190">
+          </div>
+          <div>
+            <label for="zipname">Nome do ZIP</label>
+            <input id="zipname" type="text" placeholder="ex.: mdfe_filtrados" value="mdfe_filtrados">
+          </div>
+          <div class="row">
+            <button id="btnFilter" class="btn accent" style="width:100%;">Filtrar &amp; Gerar ZIP</button>
+          </div>
+        </div>
+
+        <div class="kpi">
+          <div class="box"><div class="val" id="kTotal">0</div><div class="lab">Arquivos carregados</div></div>
+          <div class="box"><div class="val" id="kMatched">0</div><div class="lab">Com CNPJ</div></div>
+          <div class="box"><div class="val" id="kSkipped">0</div><div class="lab">Sem CNPJ</div></div>
+          <div class="box"><div class="val" id="kErrors">0</div><div class="lab">Erros de leitura</div></div>
+        </div>
+
+        <div style="height: 10px;"></div>
+        <progress id="prog" value="0" max="100"></progress>
+        <div class="row" style="justify-content: space-between;">
+          <div class="muted">Progresso: <span id="pct">0%</span></div>
+          <div class="muted">Processamento local • Navegador</div>
+        </div>
+      </div>
+
+      <!-- COLUNA DIREITA -->
+      <div class="card">
+        <div class="row" style="justify-content: space-between; align-items: center;">
+          <div class="pill">Arquivos prontos para baixar</div>
+          <button id="btnClear" class="btn warn">Limpar tudo</button>
+        </div>
+        <div style="height: 10px;"></div>
+        <div id="list" class="log"></div>
+      </div>
+    </div>
+
+    <div style="height: 18px;"></div>
+    <div class="muted">Dica: pode soltar pastas inteiras usando “Selecionar arquivos” no Chrome/Edge com Ctrl+A dentro da pasta (o navegador não envia as pastas, mas envia todos os arquivos).</div>
+  </div>
+
+<script>
+(function(){
+  const fileInput = document.getElementById('fileInput');
+  const drop = document.getElementById('drop');
+  const btnFilter = document.getElementById('btnFilter');
+  const btnClear = document.getElementById('btnClear');
+  const cnpjEl = document.getElementById('cnpj');
+  const zipnameEl = document.getElementById('zipname');
+
+  const kTotal = document.getElementById('kTotal');
+  const kMatched = document.getElementById('kMatched');
+  const kSkipped = document.getElementById('kSkipped');
+  const kErrors = document.getElementById('kErrors');
+  const prog = document.getElementById('prog');
+  const pct = document.getElementById('pct');
+  const list = document.getElementById('list');
+
+  /** Estado */
+  let files = [];
+
+  /** Utils */
+  const onlyDigits = (s) => (s||'').replace(/\D+/g,'');
+  const normalizeCNPJ = (s) => onlyDigits(s).padStart(14,' '); // só remove máscara; sem validação de dígitos
+
+  function logLine(html){
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    list.appendChild(d);
+    list.scrollTop = list.scrollHeight;
+  }
+
+  function resetStats(){
+    kTotal.textContent = '0'; kMatched.textContent = '0'; kSkipped.textContent = '0'; kErrors.textContent = '0';
+    prog.value = 0; pct.textContent = '0%';
+    list.innerHTML = '';
+  }
+
+  function updateKpi({total, matched, skipped, errors}){
+    if (total != null) kTotal.textContent = String(total);
+    if (matched != null) kMatched.textContent = String(matched);
+    if (skipped != null) kSkipped.textContent = String(skipped);
+    if (errors != null) kErrors.textContent = String(errors);
+  }
+
+  /** Input de arquivos */
+  fileInput.addEventListener('change', (e)=>{
+    files = Array.from(e.target.files || []);
+    resetStats();
+    updateKpi({ total: files.length, matched: 0, skipped: 0, errors: 0 });
+    logLine(`<span class="ok">✔</span> Carregados <b>${files.length}</b> arquivo(s).`);
+  });
+
+  /** Drag & Drop */
+  ['dragenter','dragover'].forEach(ev=>{
+    drop.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); drop.classList.add('dragover');});
+  });
+  ;['dragleave','drop'].forEach(ev=>{
+    drop.addEventListener(ev, (e)=>{ e.preventDefault(); e.stopPropagation(); drop.classList.remove('dragover');});
+  });
+  drop.addEventListener('drop', (e)=>{
+    const items = e.dataTransfer?.files;
+    if (!items || !items.length) return;
+    files = Array.from(items);
+    resetStats();
+    updateKpi({ total: files.length, matched: 0, skipped: 0, errors: 0 });
+    logLine(`<span class="ok">✔</span> Carregados <b>${files.length}</b> arquivo(s).`);
+  });
+
+  /** Filtro + ZIP */
+  btnFilter.addEventListener('click', async ()=>{
+    const targetCNPJ = normalizeCNPJ(cnpjEl.value);
+    if (!targetCNPJ || targetCNPJ.length !== 14 || /\s/.test(targetCNPJ)) {
+      alert('Informe um CNPJ válido (14 dígitos, com ou sem máscara).');
+      cnpjEl.focus(); return;
+    }
+    if (!files.length) {
+      alert('Selecione ou solte os arquivos XML primeiro.');
+      return;
+    }
+    list.innerHTML = '';
+    logLine(`🔎 Buscando CNPJ <b>${targetCNPJ}</b> em ${files.length} arquivo(s)...`);
+
+    const zip = new JSZip();
+    let matched = 0, skipped = 0, errors = 0;
+    const total = files.length;
+    updateKpi({ total, matched, skipped, errors });
+
+    // Estratégia de detecção:
+    // 1) procura exatamente 14 dígitos do CNPJ (normalizado) em todo o texto
+    // 2) também tenta localizar tag <CNPJ>...</CNPJ> contendo o alvo para maior robustez
+    const reDigits = new RegExp(targetCNPJ, 'g');
+    const reTag = new RegExp(`<\\s*CNPJ\\s*>\\s*${targetCNPJ}\\s*<\\s*/\\s*CNPJ\\s*>`, 'i');
+
+    // Processamento em lotes para não travar o UI (batching)
+    const BATCH = 64;
+    let i = 0;
+    async function processBatch(start){
+      const end = Math.min(start + BATCH, total);
+      const slice = files.slice(start, end);
+
+      await Promise.all(slice.map(file => new Promise((resolve)=>{
+        const reader = new FileReader();
+        reader.onerror = ()=>{ errors++; updateKpi({errors}); logLine(`<span class="bad">✖</span> Erro ao ler: ${file.name}`); resolve(); };
+        reader.onload = async (ev)=>{
+          try {
+            const text = typeof ev.target.result === 'string' ? ev.target.result : new TextDecoder('utf-8').decode(ev.target.result);
+            const digitsFound = reDigits.test(text);
+            const tagFound = reTag.test(text);
+            // reset lastIndex para próximos testes com a mesma regex global
+            reDigits.lastIndex = 0;
+
+            if (digitsFound || tagFound) {
+              matched++;
+              updateKpi({matched});
+              // adiciona ao zip preservando apenas o nome (sem subpastas)
+              zip.file(file.name, file);
+              logLine(`<span class="ok">✔</span> Incluído: <b>${file.name}</b>`);
+            } else {
+              skipped++;
+              updateKpi({skipped});
+            }
+          } catch (e) {
+            errors++; updateKpi({errors});
+            logLine(`<span class="bad">✖</span> Erro processando ${file.name}: ${e && e.message ? e.message : e}`);
+          } finally {
+            resolve();
+          }
+        };
+        // Lê como texto (mais leve). Muitos XMLs do SEFAZ são UTF-8.
+        reader.readAsText(file);
+      })));
+
+      i = end;
+      const p = Math.round((i / total) * 100);
+      prog.value = p; pct.textContent = p + '%';
+
+      if (end < total) {
+        // cede o loop ao event loop para manter UI responsiva
+        await new Promise(r => setTimeout(r, 0));
+        return processBatch(end);
+      }
+    }
+
+    await processBatch(0);
+
+    logLine(`<hr>`);
+    logLine(`✅ Concluído. Selecionados: <b>${matched}</b> de ${total}.`);
+    if (matched === 0) {
+      alert('Nenhum arquivo contém esse CNPJ.');
+      return;
+    }
+
+    // Gera ZIP e baixa
+    const zipName = (zipnameEl.value || 'mdfe_filtrados').replace(/[^\w\-]+/g, '_');
+    logLine(`📦 Gerando ZIP… isso é local e pode levar um pouco dependendo do tamanho.`);
+    const blob = await zip.generateAsync({type:'blob', compression: 'DEFLATE', compressionOptions: { level: 6 }});
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${zipName}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 2000);
+    logLine(`<span class="ok">⬇</span> Download iniciado: <b>${zipName}.zip</b>`);
+  });
+
+  /** Limpar */
+  btnClear.addEventListener('click', ()=>{
+    files = [];
+    fileInput.value = '';
+    cnpjEl.value = '';
+    list.innerHTML = '';
+    resetStats();
+    logLine('🧹 Limpo. Pronto para nova verificação.');
+  });
+
+})();
+</script>
+</body>
+</html>
