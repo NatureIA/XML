@@ -425,9 +425,14 @@
     const total = files.length;
     updateKpi({ total, matched, skipped, errors });
 
-    const reDigits = new RegExp(targetCNPJ, 'g');
-    const reTag = new RegExp(`<\\s*CNPJ\\s*>\\s*${targetCNPJ}\\s*<\\s*/\\s*CNPJ\\s*>`, 'i');
+    // Estratégia de detecção (com escape seguro):
+    // 1) procura exatamente 14 dígitos do CNPJ (normalizado) em todo o texto
+    // 2) também tenta localizar tag <CNPJ>...</CNPJ> contendo o alvo para maior robustez
+    const safeCNPJ = targetCNPJ.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const reDigits = new RegExp(safeCNPJ, 'g');
+    const reTag = new RegExp(`<\\s*CNPJ\\s*>\\s*${safeCNPJ}\\s*<\\s*/\\s*CNPJ\\s*>`, 'i');
 
+    // Processamento em lotes para não travar o UI (batching)
     const BATCH = 64;
     let i = 0;
     async function processBatch(start){
@@ -442,11 +447,13 @@
             const text = typeof ev.target.result === 'string' ? ev.target.result : new TextDecoder('utf-8').decode(ev.target.result);
             const digitsFound = reDigits.test(text);
             const tagFound = reTag.test(text);
+            // reset lastIndex para próximos testes com a mesma regex global
             reDigits.lastIndex = 0;
 
             if (digitsFound || tagFound) {
               matched++;
               updateKpi({matched});
+              // adiciona ao zip preservando apenas o nome (sem subpastas)
               zip.file(file.name, file);
               logLine(`<span class="ok">✔</span> Incluído: <b>${file.name}</b>`);
             } else {
@@ -460,6 +467,7 @@
             resolve();
           }
         };
+        // Lê como texto (mais leve). Muitos XMLs do SEFAZ são UTF-8.
         reader.readAsText(file);
       })));
 
@@ -468,6 +476,7 @@
       prog.value = p; pct.textContent = p + '%';
 
       if (end < total) {
+        // cede o loop ao event loop para manter UI responsiva
         await new Promise(r => setTimeout(r, 0));
         return processBatch(end);
       }
@@ -482,6 +491,7 @@
       return;
     }
 
+    // Gera ZIP e baixa
     const zipName = (zipnameEl.value || 'mdfe_filtrados').replace(/[^\w\-]+/g, '_');
     logLine(`📦 Gerando ZIP… isso é local e pode levar um pouco dependendo do tamanho.`);
     const blob = await zip.generateAsync({type:'blob', compression: 'DEFLATE', compressionOptions: { level: 6 }});
